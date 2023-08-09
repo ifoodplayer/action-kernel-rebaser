@@ -1,0 +1,101 @@
+name: Rebase - CAF/CLO
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_VERSION:
+        description: 'MSM Kernel Version'
+        required: true
+        default: 'msm-4.19'
+        type: choice
+        options:
+        - msm-3.10
+        - msm-3.14
+        - msm-3.18
+        - msm-4.14
+        - msm-4.19
+        - msm-4.4
+        - msm-4.9
+        - msm-5.10
+        - msm-5.15
+        - msm-5.4
+      CAF_TAG:
+        description: 'Kernel CAF Tag'
+        required: true
+        default: 'LA.UM.9.15.2.r1-07400-KAMORTA.QSSI13.0'
+      COMMIT_SHA:
+        description: 'Commit SHA ID'
+        required: true
+        default: '51e05ee99d0588939305de8f985a5f28c5bbaf65'
+      OEM_KERNEL_TREE:
+        description: 'OEM Kernel Source Tree'
+        required: true
+        default: 'https://github.com/cd-Crypton/android_kernel_oneplus_sm6225'
+      OEM_KERNEL_BRANCH:
+        description: 'OEM Kernel Source Branch'
+        required: true
+        default: 'master'
+
+jobs:
+  build:
+    name: Rebase Kernel by ${{ github.actor }}
+    runs-on: ubuntu-20.04
+    if: github.event.repository.owner.id == github.event.sender.id
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    steps:
+    - name: Check Out
+      uses: actions/checkout@v3
+      
+    - name: Clone OEM Kernel
+      run: |
+        mkdir -p workspace
+        cd workspace
+        git clone --depth=1 --single-branch ${{ github.event.inputs.OEM_KERNEL_TREE }} -b ${{ github.event.inputs.OEM_KERNEL_BRANCH }} ./oem
+
+    - name: Clone CAF/CLO Kernel
+      run: |
+        cd workspace
+        git clone --single-branch https://git.codelinaro.org/clo/la/kernel/${{ github.event.inputs.KERNEL_VERSION }} -b ${{ github.event.inputs.CAF_TAG }} ./caf
+
+    - name: Hard Reset CAF/CLO to Specific Commit
+      run: |
+        cd workspace/caf
+        git reset --hard ${{ github.event.inputs.COMMIT_SHA }}
+        cd ..
+
+    - name: Rebase Kernel
+      run: |
+        cd workspace/oem
+        OEM_DIR_LIST=$(find -type d -printf "%P\n" | grep -v / | grep -v .git)
+        cd ../caf
+        for i in ${OEM_DIR_LIST}; do
+                rm -rf ${i}
+        done
+        cd ..
+        cp -r oem/* caf/
+        cd kernel
+        for i in ${OEM_DIR_LIST}; do
+                git add ${i}
+                git commit -s -m "${i}: Import OEM Kernel Changes"
+        done
+        git add .
+        git commit -s -m "Import Remaining OEM Kernel Changes"
+        cd ..
+        echo "Your OEM kernel has now been rebase with CAF/CLO's release."
+        
+    - name: Compress CAF/CLO Kernel
+      run: |
+        cd workspace
+        tar -czf caf_rebase.tar.gz caf
+
+    - name: Upload to Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: workspace/caf_rebase.tar.gz
+        name: Rebased Kernel using CAF/CLO Kernel Release
+        tag_name: ${{ github.run_id }}
+        body: |
+          Note: Extract the tar file and enter then kernel's root directory. It should have already .git inside, so add new remote and push it your own git pages.

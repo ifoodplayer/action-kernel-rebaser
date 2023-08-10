@@ -35,6 +35,14 @@ on:
         description: 'OEM Kernel Source Branch'
         required: true
         default: 'master'
+      GIT_CONFIG_NAME:
+        description: 'Name of the Committer'
+        required: true
+        default: 'Carlo Dee'
+      GIT_CONFIG_EMAIL:
+        description: 'E-mail of the Committer'
+        required: true
+        default: 'carlodee.official@proton.me'
 
 jobs:
   build:
@@ -48,7 +56,12 @@ jobs:
     steps:
     - name: Check Out
       uses: actions/checkout@v3
-      
+
+    - name: Git Config
+      run: |
+        git config --global user.name "${{ github.event.inputs.GIT_CONFIG_NAME }}"
+        git config --global user.email "${{ github.event.input.GIT_CONFIG_EMAIL }}"
+
     - name: Clone OEM Kernel
       run: |
         mkdir -p workspace
@@ -68,23 +81,7 @@ jobs:
 
     - name: Rebase Kernel
       run: |
-        cd workspace/oem
-        OEM_DIR_LIST=$(find -type d -printf "%P\n" | grep -v / | grep -v .git)
-        cd ../caf
-        for i in ${OEM_DIR_LIST}; do
-                rm -rf ${i}
-        done
-        cd ..
-        cp -r oem/* caf/
-        cd kernel
-        for i in ${OEM_DIR_LIST}; do
-                git add ${i}
-                git commit -s -m "${i}: Import OEM Kernel Changes"
-        done
-        git add .
-        git commit -s -m "Import Remaining OEM Kernel Changes"
-        cd ..
-        echo "Your OEM kernel has now been rebase with CAF/CLO's release."
+        bash kernel-rebase.sh
         
     - name: Compress CAF/CLO Kernel
       run: |
